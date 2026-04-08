@@ -1,0 +1,159 @@
+{
+  "nodes": [
+    {
+      "id": "schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "parameters": { "rule": "every 12 hours" }
+    },
+    {
+      "id": "httpRequest",
+      "name": "HTTP Request - NewsAPI",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://newsapi.org/v2/top-headlines",
+        "queryParameters": {
+          "apiKey": "1dd6d387cc20466ab1a8f94dd965d1f4",
+          "category": "technology,business,sports",
+          "language": "en"
+        }
+      }
+    },
+    {
+      "id": "priorityFilter",
+      "name": "Priority Filter",
+      "type": "n8n-nodes-base.switch",
+      "parameters": {
+        "propertyName": "category",
+        "rules": [
+          { "value": "technology", "output": 1 },
+          { "value": "business", "output": 1 },
+          { "value": "sports", "output": 2 }
+        ]
+      }
+    },
+    {
+      "id": "filter",
+      "name": "Filter Important News",
+      "type": "n8n-nodes-base.if",
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "{{ $json.urlToImage }}", "operation": "notEmpty" }
+          ],
+          "string": [
+            { "value1": "{{ $json.source.name }}", "operation": "notEqual", "value2": "Unknown" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aiAgentTelegram",
+      "name": "Gemini for Telegram",
+      "type": "n8n-nodes-base.openAi",
+      "parameters": {
+        "model": "gemini-2.5-flash",
+        "prompt": "حلل الخبر واكتب بوست طويل مناسب لتليجرام:\n\n{{ $json.title }} - {{ $json.description }}"
+      }
+    },
+    {
+      "id": "aiAgentTwitter",
+      "name": "Gemini for Twitter",
+      "type": "n8n-nodes-base.openAi",
+      "parameters": {
+        "model": "gemini-2.5-flash",
+        "prompt": "حلل الخبر واكتب تغريدة قصيرة (أقل من 280 حرف):\n\n{{ $json.title }} - {{ $json.description }}"
+      }
+    },
+    {
+      "id": "aiAgentFacebook",
+      "name": "Gemini for Facebook",
+      "type": "n8n-nodes-base.openAi",
+      "parameters": {
+        "model": "gemini-2.5-flash",
+        "prompt": "حلل الخبر واكتب منشور رسمي مناسب لفيسبوك:\n\n{{ $json.title }} - {{ $json.description }}"
+      }
+    },
+    {
+      "id": "aiAgentInstagram",
+      "name": "Gemini for Instagram",
+      "type": "n8n-nodes-base.openAi",
+      "parameters": {
+        "model": "gemini-2.5-flash",
+        "prompt": "حلل الخبر واكتب Caption قصير مع هاشتاجات مناسبة لإنستجرام:\n\n{{ $json.title }} - {{ $json.description }}"
+      }
+    },
+    {
+      "id": "telegram",
+      "name": "Send Telegram Message",
+      "type": "n8n-nodes-base.telegram",
+      "parameters": {
+        "chatId": "8795620161:AAGctBlkyr3JGK_L95NkVjkP7Np9nuTu4wE",
+        "text": "{{ $json.output }}"
+      }
+    },
+    {
+      "id": "twitter",
+      "name": "Post Tweet",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://api.twitter.com/2/tweets",
+        "method": "POST",
+        "authentication": "oAuth2",
+        "bodyParameters": { "text": "{{ $json.output }}" }
+      }
+    },
+    {
+      "id": "facebook",
+      "name": "Post to Facebook Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://graph.facebook.com/YOUR_PAGE_ID/feed",
+        "method": "POST",
+        "authentication": "oAuth2",
+        "bodyParameters": { "message": "{{ $json.output }}" }
+      }
+    },
+    {
+      "id": "instagram",
+      "name": "Post to Instagram",
+      "type": "n8n-nodes-base.httpRequest",
+      "parameters": {
+        "url": "https://graph.facebook.com/YOUR_IG_USER_ID/media",
+        "method": "POST",
+        "authentication": "oAuth2",
+        "bodyParameters": {
+          "caption": "{{ $json.output }}",
+          "image_url": "{{ $json.urlToImage }}"
+        }
+      }
+    },
+    {
+      "id": "sheet",
+      "name": "Append Row in Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "parameters": {
+        "operation": "append",
+        "sheetId": "YOUR_GOOGLE_SHEET_ID",
+        "range": "Sheet1!A:E",
+        "values": [
+          "{{ $json.title }}",
+          "{{ $json.category }}",
+          "{{ $json.output }}",
+          "{{ $json.publishedAt }}",
+          "{{ $json.source.name }}"
+        ]
+      }
+    }
+  ],
+  "connections": {
+    "schedule": { "main": [["httpRequest"]] },
+    "httpRequest": { "main": [["priorityFilter"]] },
+    "priorityFilter": { "main": [["filter"]] },
+    "filter": { "main": [["aiAgentTelegram","aiAgentTwitter","aiAgentFacebook","aiAgentInstagram"]] },
+    "aiAgentTelegram": { "main": [["telegram","sheet"]] },
+    "aiAgentTwitter": { "main": [["twitter","sheet"]] },
+    "aiAgentFacebook": { "main": [["facebook","sheet"]] },
+    "aiAgentInstagram": { "main": [["instagram","sheet"]] }
+  }
+}
